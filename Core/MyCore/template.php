@@ -16,6 +16,7 @@ class template{
  
    //内部临时变量，存储用户赋值
    private $tpl_vars = array();
+   private $tpl_arr = array();
  
    public function __construct(){
 	    $config = getConfig(array('TAGLIB_BEGIN','TAGLIB_END','SHOW_VIEW','RUNTIME_PATH'));
@@ -24,6 +25,7 @@ class template{
 		$config['left_delimiter'] = $config['TAGLIB_BEGIN'];
 		$config['right_delimiter'] = $config['TAGLIB_END'];
 		$arr = $this->setConfigs($config);
+		
 
    }
     /**
@@ -115,22 +117,66 @@ private function fetch($tplFile,$comFile){
     */
    private function tplReplace($content){
      //转义左右定界符 正则表达式字符
-     $left = preg_quote($this->left_delimiter,'/');
-     $right = preg_quote($this->right_delimiter,'/');
+     $this->left = preg_quote($this->left_delimiter,'/');
+     $this->right = preg_quote($this->right_delimiter,'/');
  
      //简单模拟编译 变量
-     $pattern = array(
-       
-         '/'.$left.'\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)'.$right.'/i'
+     $variable = array(
+         '/'.$this->left.'\$([^{}]*)'.$this->right.'/i'
        );
-  
+	   //循环编译
+	    $array = array(
+         '/'.$this->left.'foreach[^>]* name=(\"|\')(.*)(\"|\')[^>]* id=(\"|\')(.*)(\"|\')'.$this->right.'(.*)'.$this->left.'\/foreach'.$this->right.'/isU',
+       );
      //正则处理
-     return preg_replace_callback($pattern, function($matches){
-		 return $this->tpl_vars[$matches[1]];
-	 }, $content);
+	 
+	$step1 =  preg_replace_callback($array, function($matches){
+		$variable = array(
+		 '/'.$this->left.'\$([^{}]*)'.$this->right.'/i'
+       );
+	   $this->tpl_arr['name'] = $matches[2];
+		$step2 =  preg_replace_callback($variable, function($matches){
+			return "<?php echo \$".$matches[1]."; ?>";
+		 }, trim($matches[7]));
+
+		 $str = "<?php foreach(\$this->tpl_vars['".$matches[2]."'] as \$k=>\$".$matches[5]."): ?>\n\r";
+		  $str .= $step2;
+		 $str .= "<?php endforeach; ?>";
+		 return $str;
+	}, $content);
+	 
+     $step2 =  preg_replace_callback($variable, function($matches){
+			$variable = array(
+				'/([^\[\]]*)\[{0,1}([^\[\]]*)\]{0,1}/i'
+		   );
+		   $step2 =  preg_replace_callback($variable, function($matches){
+				$matche = array_filter($matches);
+				if(!empty($matche)){
+					unset($matche[0]);
+					return $this->oneArray($matche);
+				}
+		 }, trim($matches[1]));
+		 if(!empty($step2)){
+			 return "<?php echo \$this->tpl_vars".$step2."; ?>";
+		 }
+	 }, $step1);
+
+	 $html = $step2;
+	 return $html;
    }
 
-
+private function oneArray($arr){
+	$str = '';
+	$mao = "/\"|\'/";
+	foreach($arr as $v){
+		$s = preg_replace($mao,'',$v);
+		$str .= "['".$s."']";
+	}
+	return $str;
+}
+   
+   
+   
 }
 
 
